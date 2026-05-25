@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador Gravitacional N-Cuerpos</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     VARIABLES CSS — punto central de control visual
+     Cambiar aquí afecta todo el diseño de manera consistente
+     ============================================================ */
+  :root {
+    --bg:        #050810;
+    --panel:     #0c1120;
+    --border:    #1a2540;
+    --accent:    #4f9eff;
+    --accent2:   #ff6b6b;
+    --accent3:   #50fa7b;
+    --text:      #c8d8f0;
+    --muted:     #4a6080;
+    --font-mono: 'JetBrains Mono', monospace;
+    --font-ui:   'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    height: 100vh;
+    display: grid;
+    /* Layout: panel izquierdo fijo + canvas que ocupa el resto */
+    grid-template-columns: 280px 1fr;
+    grid-template-rows: auto 1fr;
+    overflow: hidden;
+  }
+
+  /* ── ENCABEZADO ── */
+  header {
+    grid-column: 1 / -1;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    background: var(--panel);
+  }
+  header h1 {
+    font-family: var(--font-ui);
+    font-size: 1.1rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    color: #fff;
+  }
+  header .subtitulo {
+    font-size: 0.7rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .punto {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent3);
+    box-shadow: 0 0 8px var(--accent3);
+    animation: pulso 2s ease-in-out infinite;
+    margin-left: auto;
+  }
+  @keyframes pulso { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* ── PANEL DE CONTROL IZQUIERDO ── */
+  aside {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 20px 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .etiqueta-seccion {
+    font-size: 0.62rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  /* ── CONTROLES INDIVIDUALES ── */
+  .control { display: flex; flex-direction: column; gap: 6px; }
+  .control label {
+    font-size: 0.72rem;
+    color: var(--text);
+    display: flex;
+    justify-content: space-between;
+  }
+  .control label span { color: var(--accent); }
+
+  /* Slider personalizado */
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 6px var(--accent);
+  }
+
+  /* ── BOTONES ── */
+  .grupo-botones { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    padding: 8px 14px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+    transition: all 0.15s;
+  }
+  button:hover { background: var(--accent); color: #000; border-color: var(--accent); }
+  button.primario { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+  button.peligro:hover { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+
+  /* ── ESTADÍSTICAS EN TIEMPO REAL ── */
+  .grilla-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .caja-stat {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px;
+  }
+  .caja-stat .etiqueta-stat { font-size: 0.58rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+  .caja-stat .valor-stat { font-size: 0.9rem; color: var(--accent); margin-top: 2px; }
+
+  /* ── CANVAS PRINCIPAL ── */
+  main {
+    position: relative;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+  }
+
+  /* ── INSTRUCCIONES ── */
+  .instrucciones {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    font-size: 0.65rem;
+    color: var(--muted);
+    text-align: right;
+    line-height: 1.8;
+    pointer-events: none;
+  }
+
+  /* ── CANVAS DE ENERGÍA (mini gráfico) ── */
+  #canvasEnergia {
+    width: 100%;
+    height: 60px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    display: block;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Simulador Gravitacional N-Cuerpos</h1>
+  <span class="subtitulo">Velocity Verlet · Ley de Newton · Energía en Tiempo Real</span>
+  <div class="punto"></div>
+</header>
+
+<!-- ════════════════════════════════════════
+     PANEL DE CONTROL
+     Cada control modifica variables del simulador
+     ════════════════════════════════════════ -->
+<aside>
+
+  <div>
+    <div class="etiqueta-seccion">Simulación</div>
+    <div class="grupo-botones">
+      <button class="primario" id="btnPlay">⏸ Pausar</button>
+      <button id="btnReset">↺ Reiniciar</button>
+      <button class="peligro" id="btnClear">✕ Limpiar</button>
+    </div>
+  </div>
+
+  <div>
+    <div class="etiqueta-seccion">Escenarios</div>
+    <div class="grupo-botones">
+      <button id="pBinary">Estrella Binaria</button>
+      <button id="pSolar">Sistema Solar</button>
+      <button id="pChaos">Caos</button>
+    </div>
+  </div>
+
+  <div>
+    <div class="etiqueta-seccion">Parámetros</div>
+
+    <!-- Constante gravitacional G — qué tan fuerte es la atracción -->
+    <div class="control">
+      <label>Gravedad (G) <span id="valG">1000</span></label>
+      <input type="range" id="sliderG" min="100" max="5000" value="1000" step="100">
+    </div>
+
+    <!-- Paso de tiempo dt — afecta la precisión numérica del integrador -->
+    <div class="control">
+      <label>Paso de Tiempo (dt) <span id="valDt">0.016</span></label>
+      <input type="range" id="sliderDt" min="1" max="30" value="16" step="1">
+    </div>
+
+    <!-- Suavizado ε — evita fuerzas infinitas cuando r → 0 -->
+    <div class="control">
+      <label>Suavizado (ε) <span id="valSoft">15</span></label>
+      <input type="range" id="sliderSoft" min="1" max="60" value="15" step="1">
+    </div>
+
+    <!-- Masa del próximo cuerpo a añadir al canvas -->
+    <div class="control">
+      <label>Masa del Nuevo Cuerpo <span id="valMass">20</span></label>
+      <input type="range" id="sliderMass" min="5" max="200" value="20" step="5">
+    </div>
+  </div>
+
+  <div>
+    <div class="etiqueta-seccion">Estadísticas</div>
+    <div class="grilla-stats">
+      <div class="caja-stat">
+        <div class="etiqueta-stat">Cuerpos</div>
+        <div class="valor-stat" id="statBodies">0</div>
+      </div>
+      <div class="caja-stat">
+        <div class="etiqueta-stat">FPS</div>
+        <div class="valor-stat" id="statFPS">0</div>
+      </div>
+      <div class="caja-stat">
+        <div class="etiqueta-stat">Energ. Cin.</div>
+        <div class="valor-stat" id="statKE">0</div>
+      </div>
+      <div class="caja-stat">
+        <div class="etiqueta-stat">Energ. Total</div>
+        <div class="valor-stat" id="statTE">0</div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="etiqueta-seccion">Energía Cinética (en el tiempo)</div>
+    <!-- Gráfico en vivo: un integrador correcto mantiene la energía estable -->
+    <canvas id="canvasEnergia"></canvas>
+  </div>
+
+</aside>
+
+<!-- ════════════════════════════════════════
+     CANVAS PRINCIPAL DE SIMULACIÓN
+     ════════════════════════════════════════ -->
+<main>
+  <canvas id="canvasSim"></canvas>
+  <div class="instrucciones">
+    Click → Añadir cuerpo<br>
+    Click + Arrastrar → Establecer velocidad<br>
+    Scroll → Zoom
+  </div>
+</main>
+
+<script>
+/* ================================================================
+   SIMULADOR GRAVITACIONAL — Velocity Verlet N-Cuerpos
+   ================================================================
+   GUÍA DE LECTURA:
+   El código está organizado en 5 secciones:
+   1. Configuración: canvas y variables globales
+   2. La clase Cuerpo: representa un cuerpo celeste
+   3. La física: cálculo de fuerzas e integración numérica
+   4. El renderizador: dibuja el estado actual en el canvas
+   5. El loop principal y la interfaz de usuario
+   ================================================================ */
+
+
+/* ──────────────────────────────────────────────────────────────
+   SECCIÓN 1: CONFIGURACIÓN
+   ────────────────────────────────────────────────────────────── */
+
+const canvas  = document.getElementById('canvasSim');
+const ctx     = canvas.getContext('2d');
+const eCanvas = document.getElementById('canvasEnergia');
+const eCtx    = eCanvas.getContext('2d');
+
+// Ajustamos el canvas al tamaño real de su contenedor en el DOM
+function ajustarCanvas() {
+  canvas.width  = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+}
+ajustarCanvas();
+window.addEventListener('resize', ajustarCanvas);
+
+// ── PARÁMETROS GLOBALES DE LA SIMULACIÓN ──
+let G         = 1000;   // Constante gravitacional (escalada para pantalla)
+let dt        = 0.016;  // Paso de tiempo: cuánto avanza la simulación por frame
+let suavizado = 15;     // Parámetro ε: evita singularidades numéricas (r → 0)
+
+// ── ESTADO DE LA SIMULACIÓN ──
+let cuerpos       = [];     // Array con todos los cuerpos celestes activos
+let corriendo     = true;   // Controla si la simulación avanza o está pausada
+let contadorFrames = 0;
+let tiempoUltimoFPS = 0;
+let fps = 0;
+
+// ── HISTORIAL DE ENERGÍA (para el gráfico en vivo) ──
+const historialEnergia = [];
+const MAX_HISTORIAL    = 200;
+
+// ── CÁMARA (zoom y desplazamiento) ──
+let camX = 0, camY = 0, escala = 1;
+
+// ── VARIABLES DE ARRASTRE (para dar velocidad inicial al crear un cuerpo) ──
+let arrastrando   = false;
+let inicioArrastre   = { x: 0, y: 0 };
+let actualArrastre   = { x: 0, y: 0 };
+let masaNuevo = 20;
+
+
+/* ──────────────────────────────────────────────────────────────
+   SECCIÓN 2: LA CLASE CUERPO
+   Cada cuerpo celeste es un objeto con posición, velocidad,
+   aceleración y masa. Guarda un historial de posiciones para
+   dibujar la trayectoria orbital con efecto de desvanecimiento.
+   ────────────────────────────────────────────────────────────── */
+
+class Cuerpo {
+  constructor(x, y, vx, vy, masa, color) {
+    this.x    = x;      // Posición X en el espacio de simulación
+    this.y    = y;      // Posición Y en el espacio de simulación
+    this.vx   = vx;    // Componente X de la velocidad
+    this.vy   = vy;    // Componente Y de la velocidad
+    this.ax   = 0;     // Componente X de la aceleración (calculada cada frame)
+    this.ay   = 0;     // Componente Y de la aceleración
+    this.masa = masa;
+    this.color = color || colorAleatorio();
+    // Radio visual proporcional a la masa: usamos raíz cúbica porque
+    // el volumen de una esfera escala con r³, lo que hace la relación más realista
+    this.radio = 3 + Math.cbrt(masa) * 1.5;
+    // Historial de posiciones para dibujar la trayectoria orbital
+    this.trayectoria    = [];
+    this.maxTrayectoria = 120;
+  }
+
+  // Guarda la posición actual en el historial de trayectoria
+  registrarTrayectoria() {
+    this.trayectoria.push({ x: this.x, y: this.y });
+    if (this.trayectoria.length > this.maxTrayectoria) {
+      this.trayectoria.shift(); // Elimina el punto más antiguo
+    }
+  }
+}
+
+function colorAleatorio() {
+  const colores = ['#4f9eff','#ff6b6b','#50fa7b','#ffb86c','#bd93f9','#ff79c6','#8be9fd'];
+  return colores[Math.floor(Math.random() * colores.length)];
+}
+
+
+/* ──────────────────────────────────────────────────────────────
+   SECCIÓN 3: LA FÍSICA
+   ────────────────────────────────────────────────────────────── */
+
+/**
+ * calcularAceleraciones()
+ * Para cada par de cuerpos (i, j), calcula la fuerza gravitacional
+ * y la convierte en aceleración usando la Segunda Ley de Newton: a = F/m.
+ *
+ * COMPLEJIDAD: O(n²) — comparamos cada par exactamente una vez
+ * gracias a la Tercera Ley de Newton (acción y reacción igual y opuesta).
+ * Esto da n*(n-1)/2 evaluaciones en lugar de n² completo.
+ *
+ * Para n > 1000 cuerpos se usa Barnes-Hut O(n·log n), pero para
+ * esta escala O(n²) es perfectamente eficiente.
+ */
+function calcularAceleraciones() {
+  // Reiniciamos las aceleraciones antes de sumar las contribuciones de cada par
+  for (const c of cuerpos) { c.ax = 0; c.ay = 0; }
+
+  for (let i = 0; i < cuerpos.length; i++) {
+    for (let j = i + 1; j < cuerpos.length; j++) {
+      const ci = cuerpos[i];
+      const cj = cuerpos[j];
+
+      // Vector desplazamiento de i hacia j (dirección de la fuerza sobre i)
+      const dx = cj.x - ci.x;
+      const dy = cj.y - ci.y;
+
+      // Distancia al cuadrado + suavizado² (evita r → 0 y fuerzas infinitas)
+      // El suavizado ε es una corrección numérica estándar en astrofísica computacional
+      const r2 = dx*dx + dy*dy + suavizado*suavizado;
+      const r  = Math.sqrt(r2);
+
+      // Magnitud de la fuerza dividida por r para obtener el vector unitario:
+      // F = G·m1·m2/r²  →  F/r = G·m1·m2/r³
+      // Separamos las masas para aplicarlas individualmente (a = F/m)
+      const fuerza = G / (r2 * r); // = G / r³
+
+      // Aceleración sobre i: a_i = G·mj/r³ · d  (masa mi se cancela)
+      ci.ax += fuerza * cj.masa * dx;
+      ci.ay += fuerza * cj.masa * dy;
+
+      // Por la 3ª Ley de Newton: fuerza sobre j es igual y opuesta
+      cj.ax -= fuerza * ci.masa * dx;
+      cj.ay -= fuerza * ci.masa * dy;
+    }
+  }
+}
+
+/**
+ * integrarVerlet()
+ * Implementa el integrador Velocity Verlet en dos semi-pasos:
+ *
+ *   Paso 1: v(t + dt/2) = v(t) + a(t) · dt/2          ← medio paso de velocidad
+ *   Paso 2: x(t + dt)   = x(t) + v(t + dt/2) · dt     ← paso completo de posición
+ *   Paso 3: [recalcular a(t + dt) con nuevas posiciones]
+ *   Paso 4: v(t + dt)   = v(t + dt/2) + a(t+dt) · dt/2 ← completar la velocidad
+ *
+ * Por qué es mejor que el integrador de Euler simple:
+ * — Euler acumula error O(dt) por paso → la energía "se escapa" (órbitas espirales)
+ * — Verlet acumula error O(dt²) → la energía oscila pero permanece acotada
+ * Este comportamiento se llama "simpéctico" y es lo que usan los simuladores
+ * de dinámica molecular y astrofísica de investigación real.
+ */
+function integrarVerlet() {
+  // Pasos 1 y 2: medio paso de velocidad + paso completo de posición
+  for (const c of cuerpos) {
+    c.vx += c.ax * dt * 0.5;
+    c.vy += c.ay * dt * 0.5;
+    c.x  += c.vx * dt;
+    c.y  += c.vy * dt;
+    c.registrarTrayectoria();
+  }
+
+  // Paso 3: recalcular aceleraciones con las posiciones actualizadas
+  calcularAceleraciones();
+
+  // Paso 4: completar el semi-paso de velocidad con la nueva aceleración
+  for (const c of cuerpos) {
+    c.vx += c.ax * dt * 0.5;
+    c.vy += c.ay * dt * 0.5;
+  }
+}
+
+/**
+ * calcularEnergia()
+ * Calcula la energía mecánica total del sistema:
+ *   EC = Σ ½·m·v²              (energía cinética de cada cuerpo)
+ *   EP = -Σ G·mi·mj / r        (energía potencial gravitacional de cada par)
+ *   E_total = EC + EP = constante en un sistema cerrado ideal
+ *
+ * Si el integrador funciona bien, E_total no debería derivar con el tiempo.
+ * Esto sirve como métrica de corrección del código — la física como validación.
+ */
+function calcularEnergia() {
+  let EC = 0, EP = 0;
+  for (const c of cuerpos) {
+    EC += 0.5 * c.masa * (c.vx*c.vx + c.vy*c.vy);
+  }
+  for (let i = 0; i < cuerpos.length; i++) {
+    for (let j = i+1; j < cuerpos.length; j++) {
+      const dx = cuerpos[j].x - cuerpos[i].x;
+      const dy = cuerpos[j].y - cuerpos[i].y;
+      const r  = Math.sqrt(dx*dx + dy*dy + suavizado*suavizado);
+      EP -= G * cuerpos[i].masa * cuerpos[j].masa / r;
+    }
+  }
+  return { EC, EP, total: EC + EP };
+}
+
+
+/* ──────────────────────────────────────────────────────────────
+   SECCIÓN 4: RENDERIZADO
+   Dibuja el estado actual en el canvas usando la API 2D.
+   Las coordenadas del espacio de simulación se transforman
+   a píxeles de pantalla mediante la función simAPantalla().
+   ────────────────────────────────────────────────────────────── */
+
+// Transforma coordenadas del espacio de simulación a píxeles de pantalla
+// Esta es una transformación afín: traslación (cámara) + escala (zoom)
+function simAPantalla(x, y) {
+  return {
+    px: (x - camX) * escala + canvas.width  * 0.5,
+    py: (y - camY) * escala + canvas.height * 0.5,
+  };
+}
+
+function renderizar() {
+  // Fondo semitransparente en lugar de clearRect:
+  // esto crea el efecto de "desvanecimiento" de las trayectorias orbitales
+  ctx.fillStyle = 'rgba(5, 8, 16, 0.25)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  for (const c of cuerpos) {
+    // ── Dibuja la trayectoria orbital ──
+    if (c.trayectoria.length > 1) {
+      ctx.beginPath();
+      const p0 = simAPantalla(c.trayectoria[0].x, c.trayectoria[0].y);
+      ctx.moveTo(p0.px, p0.py);
+
+      for (let i = 1; i < c.trayectoria.length; i++) {
+        const p = simAPantalla(c.trayectoria[i].x, c.trayectoria[i].y);
+        // Opacidad progresiva: los puntos más viejos son más transparentes
+        ctx.globalAlpha = i / c.trayectoria.length * 0.5;
+        ctx.lineTo(p.px, p.py);
+      }
+      ctx.strokeStyle = c.color;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // ── Dibuja el cuerpo celeste ──
+    const { px, py } = simAPantalla(c.x, c.y);
+    const r = c.radio * escala;
+
+    // Halo luminoso usando gradiente radial (efecto glow)
+    const grad = ctx.createRadialGradient(px, py, 0, px, py, r * 3);
+    grad.addColorStop(0, c.color + 'aa');
+    grad.addColorStop(1, c.color + '00');
+    ctx.beginPath();
+    ctx.arc(px, py, r * 3, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Círculo sólido del cuerpo
+    ctx.beginPath();
+    ctx.arc(px, py, Math.max(r, 2), 0, Math.PI * 2);
+    ctx.fillStyle = c.color;
+    ctx.fill();
+  }
+
+  // ── Línea de arrastre (previsualiza la velocidad inicial del nuevo cuerpo) ──
+  if (arrastrando) {
+    ctx.beginPath();
+    ctx.moveTo(inicioArrastre.x, inicioArrastre.y);
+    ctx.lineTo(actualArrastre.x, actualArrastre.y);
+    ctx.strokeStyle = '#ffffff44';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Punto de origen del nuevo cuerpo
+    ctx.beginPath();
+    ctx.arc(inicioArrastre.x, inicioArrastre.y, 5, 0, Math.PI*2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+  }
+}
+
+/**
+ * renderizarGraficaEnergia()
+ * Dibuja la energía cinética a lo largo del tiempo en el mini-canvas.
+ * Si la curva es estable (no diverge), el integrador está funcionando bien.
+ * Este gráfico convierte una propiedad matemática abstracta en algo visible.
+ */
+function renderizarGraficaEnergia() {
+  eCanvas.width  = eCanvas.offsetWidth;
+  eCanvas.height = eCanvas.offsetHeight;
+  const w = eCanvas.width, h = eCanvas.height;
+  eCtx.clearRect(0, 0, w, h);
+
+  if (historialEnergia.length < 2) return;
+
+  const max = Math.max(...historialEnergia.map(e => e.EC), 1);
+  eCtx.beginPath();
+  for (let i = 0; i < historialEnergia.length; i++) {
+    const x = (i / (MAX_HISTORIAL - 1)) * w;
+    const y = h - (historialEnergia[i].EC / max) * (h - 4);
+    i === 0 ? eCtx.moveTo(x, y) : eCtx.lineTo(x, y);
+  }
+  eCtx.strokeStyle = '#4f9eff';
+  eCtx.lineWidth = 1.5;
+  eCtx.stroke();
+}
+
+
+/* ──────────────────────────────────────────────────────────────
+   SECCIÓN 5: LOOP PRINCIPAL Y INTERFAZ
+   requestAnimationFrame crea el loop a ~60fps sincronizado
+   con la tasa de refresco del monitor.
+   En cada frame: física → render → estadísticas → gráfica.
+   ────────────────────────────────────────────────────────────── */
+
+function loop(timestamp) {
+  requestAnimationFrame(loop);
+
+  if (corriendo && cuerpos.length > 0) {
+    // Ejecutamos 3 sub-pasos de física por frame para mayor precisión
+    // sin sacrificar demasiado rendimiento visual
+    for (let i = 0; i < 3; i++) {
+      calcularAceleraciones();
+      integrarVerlet();
+    }
+  }
+
+  renderizar();
+
+  // ── Actualizar estadísticas cada 500ms para no sobrecargar el DOM ──
+  contadorFrames++;
+  if (timestamp - tiempoUltimoFPS > 500) {
+    fps = Math.round(contadorFrames / ((timestamp - tiempoUltimoFPS) / 1000));
+    contadorFrames    = 0;
+    tiempoUltimoFPS = timestamp;
+
+    if (cuerpos.length > 0) {
+      const E = calcularEnergia();
+      historialEnergia.push(E);
+      if (historialEnergia.length > MAX_HISTORIAL) historialEnergia.shift();
+
+      document.getElementById('statBodies').textContent = cuerpos.length;
+      document.getElementById('statFPS').textContent    = fps;
+      document.getElementById('statKE').textContent     = Math.round(E.EC);
+      document.getElementById('statTE').textContent     = Math.round(E.total);
+      renderizarGraficaEnergia();
+    }
+  }
+}
+
+// Arranque: primer cálculo de aceleraciones e inicio del loop
+calcularAceleraciones();
+requestAnimationFrame(loop);
+
+
+/* ──────────────────────────────────────────────────────────────
+   ESCENARIOS PREDEFINIDOS
+   Condiciones iniciales calculadas para producir dinámicas
+   estables o caóticas interesantes.
+   ────────────────────────────────────────────────────────────── */
+
+function limpiarCuerpos() {
+  cuerpos = [];
+  historialEnergia.length = 0;
+}
+
+function cargarEstrellaBinaria() {
+  limpiarCuerpos();
+  // Dos estrellas de igual masa en órbita circular mutua.
+  // La velocidad orbital para órbita circular: v = √(G·M / (2·d))
+  const M = 100, d = 100;
+  const v = Math.sqrt(G * M / (2 * d)) * 0.5;
+  cuerpos.push(new Cuerpo( d, 0,  0,  v, M, '#4f9eff'));
+  cuerpos.push(new Cuerpo(-d, 0,  0, -v, M, '#ff6b6b'));
+}
+
+function cargarSistemaSolar() {
+  limpiarCuerpos();
+  // Estrella central: masa dominante que define las órbitas
+  cuerpos.push(new Cuerpo(0, 0, 0, 0, 500, '#ffb86c'));
+  const masaEstrella = 500;
+  // Planetas: velocidad orbital circular v = √(G·M_estrella / r)
+  const planetas = [
+    { r: 80,  m: 5,  c: '#bd93f9' },
+    { r: 140, m: 8,  c: '#50fa7b' },
+    { r: 210, m: 6,  c: '#4f9eff' },
+    { r: 300, m: 15, c: '#ff6b6b' },
+  ];
+  for (const p of planetas) {
+    const v = Math.sqrt(G * masaEstrella / p.r);
+    cuerpos.push(new Cuerpo(p.r, 0, 0, v, p.m, p.c));
+  }
+}
+
+function cargarCaos() {
+  limpiarCuerpos();
+  // 8 cuerpos con posiciones y masas aleatorias pero velocidades
+  // tangenciales (perpendiculares al radio) para un inicio interesante
+  for (let i = 0; i < 8; i++) {
+    const angulo = Math.random() * Math.PI * 2;
+    const r      = 50 + Math.random() * 200;
+    const x      = Math.cos(angulo) * r;
+    const y      = Math.sin(angulo) * r;
+    const vel    = 2 + Math.random() * 4;
+    // Velocidad tangencial: perpendicular al vector radio
+    const vx = -Math.sin(angulo) * vel;
+    const vy =  Math.cos(angulo) * vel;
+    cuerpos.push(new Cuerpo(x, y, vx, vy, 10 + Math.random() * 40));
+  }
+}
+
+// Escenario inicial al cargar la página
+cargarSistemaSolar();
+
+
+/* ──────────────────────────────────────────────────────────────
+   EVENTOS DE MOUSE
+   ────────────────────────────────────────────────────────────── */
+
+// Click + arrastre → crear cuerpo con velocidad inicial definida por el arrastre
+canvas.addEventListener('mousedown', e => {
+  arrastrando   = true;
+  inicioArrastre   = { x: e.offsetX, y: e.offsetY };
+  actualArrastre   = { ...inicioArrastre };
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (arrastrando) actualArrastre = { x: e.offsetX, y: e.offsetY };
+});
+
+canvas.addEventListener('mouseup', e => {
+  if (!arrastrando) return;
+  arrastrando = false;
+
+  // Convertimos coordenadas de pantalla al espacio de simulación
+  // usando la transformación afín inversa de simAPantalla()
+  const sx   = inicioArrastre.x, sy = inicioArrastre.y;
+  const simX = (sx - canvas.width  * 0.5) / escala + camX;
+  const simY = (sy - canvas.height * 0.5) / escala + camY;
+
+  // La velocidad inicial es proporcional al vector de arrastre
+  const factorVel = 0.08 / escala;
+  const vx = (e.offsetX - sx) * factorVel;
+  const vy = (e.offsetY - sy) * factorVel;
+
+  cuerpos.push(new Cuerpo(simX, simY, vx, vy, masaNuevo));
+});
+
+// Scroll → zoom (ajusta la escala de la cámara)
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY > 0 ? 0.9 : 1.1;
+  escala = Math.max(0.1, Math.min(10, escala * factor));
+}, { passive: false });
+
+
+/* ──────────────────────────────────────────────────────────────
+   EVENTOS DE LA INTERFAZ (sliders y botones)
+   ────────────────────────────────────────────────────────────── */
+
+// Función auxiliar: conecta un slider a una variable y actualiza su etiqueta
+function conectarSlider(id, idEtiqueta, callback, divisor = 1) {
+  const el = document.getElementById(id);
+  const lb = document.getElementById(idEtiqueta);
+  el.addEventListener('input', () => {
+    const val = parseFloat(el.value) / divisor;
+    lb.textContent = divisor > 1 ? val.toFixed(3) : val;
+    callback(val);
+  });
+}
+
+conectarSlider('sliderG',    'valG',    v => G         = v);
+conectarSlider('sliderDt',   'valDt',   v => dt        = v, 1000);
+conectarSlider('sliderSoft', 'valSoft', v => suavizado = v);
+conectarSlider('sliderMass', 'valMass', v => masaNuevo = v);
+
+document.getElementById('btnPlay').addEventListener('click', e => {
+  corriendo = !corriendo;
+  e.target.textContent = corriendo ? '⏸ Pausar' : '▶ Reanudar';
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  cargarSistemaSolar();
+  corriendo = true;
+  document.getElementById('btnPlay').textContent = '⏸ Pausar';
+});
+
+document.getElementById('btnClear').addEventListener('click', limpiarCuerpos);
+
+document.getElementById('pBinary').addEventListener('click', cargarEstrellaBinaria);
+document.getElementById('pSolar').addEventListener('click',  cargarSistemaSolar);
+document.getElementById('pChaos').addEventListener('click',  cargarCaos);
+</script>
+</body>
+</html>
