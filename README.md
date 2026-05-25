@@ -157,3 +157,42 @@ Desarrollado como proyecto de portafolio que demuestra simulación física aplic
 ---
 
 *Implementación en un solo archivo · Sin dependencias · HTML5 + CSS3 + ES6+ puro*
+
+---
+
+## 🧠 Lo que Aprendí Construyendo Este Proyecto
+
+Tengo certificación en fundamentos de HTML, CSS y JavaScript, y experiencia previa con C++, Arduino y Docker. Sin embargo, este proyecto me llevó a territorios que ningún curso introductorio cubre.
+
+### De saber programar a entender física computacional
+
+El mayor salto fue darme cuenta de que **programar una simulación física no es lo mismo que programar una aplicación**. En una app web normal, si algo falla, lo ves en pantalla. En una simulación, el código puede ejecutarse perfectamente y aun así estar mal — porque la física se rompe de formas silenciosas.
+
+**El problema concreto:** Mi primera versión usaba el integrador de Euler simple:
+```javascript
+// ❌ Lo que hice primero — parece correcto, pero no lo es
+body.vx += body.ax * dt;
+body.vy += body.ay * dt;
+body.x  += body.vx * dt;
+body.y  += body.vy * dt;
+```
+Las órbitas se espiralizaban hacia afuera lentamente. Los planetas ganaban energía de la nada y salían disparados. Tardé un tiempo en entender que el problema no era un bug de código — era un **error matemático de primer orden**. Euler acumula error en cada frame y la energía del sistema "se escapa".
+
+La solución fue aprender el **integrador Velocity Verlet**, que divide cada paso en dos mitades y recalcula la aceleración en el medio. El resultado: la energía total oscila pero no diverge. Eso fue el momento en que entendí que los métodos numéricos no son un detalle académico — son la diferencia entre una simulación que funciona y una que miente.
+
+### Álgebra vectorial aplicada, no abstracta
+
+En clase uno aprende que una fuerza tiene módulo y dirección. Aquí tuve que implementarlo: dado que la fuerza gravitacional apunta *de un cuerpo hacia otro*, necesité descomponerla en sus componentes $F_x$ y $F_y$ usando el vector desplazamiento normalizado. El concepto de **dividir por $r$ para normalizar** pasó de ser una fórmula a ser algo que entiendo geométricamente.
+
+### Complejidad computacional deja de ser teórica
+
+Sabía que O(n²) era "malo". Aquí lo *sentí*: con 5 cuerpos el simulador vuela a 60fps; con 30 empieza a trabajar; con 100 se arrastra. Cada cuerpo nuevo no suma trabajo — lo multiplica. Eso me llevó a investigar el **algoritmo Barnes-Hut** (O(n log n)), que está en mi lista de extensiones futuras. Nunca había tenido una razón tan concreta para querer optimizar algo.
+
+### El canvas como sistema de coordenadas independiente
+
+Aprender a separar el **espacio de simulación** (donde viven los planetas) del **espacio de pantalla** (píxeles del canvas) fue un cambio de mentalidad importante. La función `simToScreen()` que implementé es una transformación afín básica — el mismo concepto que usan los motores de videojuegos y las aplicaciones de CAD.
+
+### Lo que este proyecto me confirmó
+
+Que quiero estudiar ingeniería no solo para escribir software, sino para entender los sistemas que el software modela. La frontera entre matemática, física y código es exactamente donde quiero trabajar.
+
